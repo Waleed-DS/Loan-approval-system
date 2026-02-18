@@ -1,0 +1,14 @@
+# Ignore the huge virtual environment (Docker builds its own!)
+.venv
+venv
+ENV
+
+# Ignore git history (too big)
+.git
+
+# Ignore python cache files
+__pycache__
+*.pyc
+
+# Ignore Jupyter checkpoints
+.ipynb_checkpoints

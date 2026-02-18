@@ -236,3 +236,104 @@ Top Risk Driver: The engineered stress_index was the #1 predictor of default, va
 High-Risk Pool: The 60.8% default rate required a custom Probability Threshold (optimized via F1-Score) rather than the standard 0.50 cutoff.
 
 Stability: The model uses conservative hyperparameters (max_depth=4, learning_rate=0.05) to ensure it generalizes well to new, unseen applicants.
+
+## Business Simulation (The Strategy)
+
+### The Economics
+- **Average Loan:** $10,000
+- **Profit if Repaid:** $1,000 (10% interest)
+- **Loss if Default:** -$10,000 (Principal loss)
+
+### The Question: What is the Profitability Threshold?
+Standard machine learning models use a default threshold of 0.5 (50%). However, strictly minimizing accuracy is incorrect for this business case because the costs are asymmetric.
+
+Breakeven Analysis:
+We need to find the maximum probability of default ($P$) we can tolerate before a loan becomes unprofitable (Expected Value < 0).
+
+$$EV = (P_{Repaid} \times Profit) - (P_{Default} \times Loss)$$
+
+Setting Expected Value (EV) to 0 (The Breakeven Point):
+$$0 = ((1 - P) \times 1,000) - (P \times 10,000)$$
+$$1,000 - 1,000P - 10,000P = 0$$
+$$1,000 = 11,000P$$
+$$P = \frac{1,000}{11,000} \approx 0.0909$$
+
+### The Strategy (9% Cutoff)
+We must reject any applicant with a **Default Probability > 9%**.
+
+* Scenario A (Standard 50% Threshold):
+    If we approved a borrower with a 20% risk of default (which is "safe" in a standard model), the expected value is:
+    $$EV = (0.80 \times 1,000) - (0.20 \times 10,000) = 800 - 2,000 = -\$1,200 \text{ (Loss)}$$
+
+* Scenario B (Our 9% Threshold):
+    By strictly capping risk at 9%, we ensure that every single approved loan has a positive mathematical expectation of profit.
+
+
+    ##  Installation & Usage instructions
+
+### Prerequisites
+ Docker Desktop (Running)
+ Git (Installed)
+ Note: No local Python installation or virtual environment is required.
+
+### Step 1. Clone & Setup
+The project is fully containerized. Clone the repository and navigate to the project root.
+
+```bash
+# Clone the repository
+command:
+git clone [https://github.com/Waleed-DS/Loan-approval-system.git](https://github.com/Waleed-DS/Loan-approval-system.git)
+
+# Enter the project directory
+command:
+cd Loan-approval-system
+
+Step 2: Build the Environment
+
+Build the Docker image. This process automatically installs all Python dependencies (Pandas, XGBoost, FastAPI) and sets up the execution environment.
+
+command:
+docker build -t credit-scorer .
+
+ Step 3. Run the API
+ Start the container and map port 8000.
+
+ command:
+ docker run -p 8000:8000 credit-scorer
+
+ Step 4. Interactive Testing
+
+ access the FastAPI Swagger UI to test the model,if you cant reach it paste http://127.0.0.1:8000/docs in the same browser to get it running.
+
+
+
+
+
+ ##  Approach & Methodology
+
+### 1. Model Selection Strategy: Why XGBoost?
+We selected **XGBoost (Extreme Gradient Boosting)** as the champion model over Logistic Regression and Random Forest for three strategic reasons:
+
+* **Handling Non-Linear Risk:** Financial risk is rarely linear. A credit score drop from 700 to 600 is significantly more dangerous than a drop from 800 to 700. XGBoost naturally captures these non-linear "step functions" in risk.
+* **Class Imbalance Management:** With a **60.8% default rate**, the dataset is heavily skewed. XGBoost’s built-in `scale_pos_weight` parameter allowed us to mathematically penalize False Negatives (missing a default) during the training phase, optimizing the model for recall without needing external oversampling techniques.
+* **Robustness:** Unlike linear models which are sensitive to outliers, tree-based boosting is more resilient to extreme values, making it safer for production financial data.
+
+### 2. Data Cleaning & Integrity Strategy
+"Garbage In, Garbage Out" is the primary failure mode in credit scoring. We implemented a strict cleaning pipeline in `preprocessing.py` to ensure training-serving consistency.
+
+#### A. Logical Integrity Checks
+* Negative Value Correction: Financial metrics like `income` and `loan_amount` cannot be negative. We implemented an absolute value conversion (`.abs()`) to automatically correct data entry typos (e.g., `-50000` becomes `50000`).
+* *Domain Constraints:* We enforced strict bounds on variables based on real-world logic:
+    * *Credit Score:* Clipped to the valid FICO range (300–850).
+    * *Employment Length:* Clipped to a maximum of 50 years to remove unrealistic outliers.
+
+#### B. Robust Imputation (Median)
+* *The Strategy:* We used *Median Imputation* for missing values in `income`, `loan_amount`, and `credit_score`.
+* *The Why:* Financial data is typically right-skewed (a few high earners pull the average up). Using the *Mean* would artificially inflate the profile of a typical applicant. The *Median* ($36,271 for income) provides a statistically robust baseline.
+
+#### C. Outlier Management (Winsorization)
+* *The Problem:* Extreme outliers (e.g., multi-million dollar incomes) can distort the decision boundaries of the model.
+* *The Fix:* Instead of deleting valid high-value data, we applied *Capping (Winsorization)* at specific percentiles calculated during EDA:
+    * *Income:* Capped at the *95th percentile* ($97,146).
+    * *Loan Amount:* Capped at the *99th percentile* ($25,000).
+* *Benefit:* This preserves the signal ("This applicant is wealthy") while preventing numerical instability in the model.
